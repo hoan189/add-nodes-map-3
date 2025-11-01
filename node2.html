@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Add Nodes to GeoJSON</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body {height:100%; margin:0;}
+    #map {height:90vh;}
+    #panel {
+      position:absolute;
+      top:10px; left:10px;
+      background:white;
+      padding:10px;
+      border-radius:6px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      font-family:sans-serif;
+      z-index:10;
+    }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <button id="downloadBtn">⬇️ Download GeoJSON</button>
+    <button id="clearBtn">🗑️ Clear</button>
+    <div id="count">Nodes: 0</div>
+  </div>
+  <div id="map"></div>
+
+  <script>
+  let map;
+  let nodeMarkers = [];
+  let features = []; // store geojson features (points)
+  let boundaryPoly;
+  let streetLayer;
+
+  function initMap(){
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: {lat: 21.028, lng: 105.792},
+      zoom: 15
+    });
+
+    fetch("boundary.geojson")
+          .then(r => r.json())
+          .then(boundary => {
+            // tạo polygon cho boundary
+            const coords = boundary.features[0].geometry.coordinates[0].map(
+              c => ({ lat: c[1], lng: c[0] })
+            );
+
+            boundaryPoly = new google.maps.Polygon({
+              paths: coords,
+              strokeColor: "#FF8E78",
+              strokeWeight: 2,
+              fillColor: "#FCFCCA",
+              fillOpacity: 0.2,
+              map: map,
+              clickable: false
+          });
+          // chỉ cho phép click trong khu vực boundary
+          map.addListener("click", (e) => {
+              if (google.maps.geometry.poly.containsLocation(e.latLng, boundaryPoly)) {
+                addNode(e.latLng.lat(), e.latLng.lng());
+              } else {
+                alert("Vui lòng chọn điểm trong khu vực Cầu Giấy.");
+              }
+            });
+          });
+        
+          fetch("added_nodes.geojson")
+            .then(r => r.json())
+            .then(streets => {
+            streetLayer = new google.maps.Data();
+            streetLayer.addGeoJson(streets);
+            streetLayer.setStyle({
+              strokeColor: '#0000FF',
+              strokeWeight: 2
+            }); 
+            // hiển thị lớp đường phố
+            streetLayer.setMap(map);
+          });
+
+    // Click to add node
+    // Click to add node is handled by the boundary click listener above
+    document.getElementById('downloadBtn').onclick = downloadGeoJSON;
+    document.getElementById('clearBtn').onclick = clearNodes;
+  }
+
+function addNode(lat, lng){
+  const marker = new google.maps.Marker({
+    position: {lat, lng},
+    map,
+    icon: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+  });
+
+  // Khi click vào marker thì hỏi có muốn xóa không
+  marker.addListener("click", () => {
+    if (confirm("Xóa điểm này?")) {
+      marker.setMap(null); // xóa khỏi map
+      const idx = nodeMarkers.indexOf(marker);
+      if (idx > -1) {
+        nodeMarkers.splice(idx, 1);
+        features.splice(idx, 1);
+      }
+      document.getElementById('count').textContent = "Nodes: " + features.length;
+    }
+  });
+
+  nodeMarkers.push(marker);
+
+  const feature = {
+    type: "Feature",
+    properties: {},
+    geometry: {
+      type: "Point",
+      coordinates: [lng, lat]
+    }
+  };
+  features.push(feature);
+
+  document.getElementById('count').textContent = "Nodes: " + features.length;
+}
+
+  function clearNodes(){
+    nodeMarkers.forEach(m=>m.setMap(null));
+    nodeMarkers = [];
+    features = [];
+    document.getElementById('count').textContent = "Nodes: 0";
+  }
+
+  function downloadGeoJSON(){
+    const geojson = {
+      type: "FeatureCollection",
+      features: features
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson, null, 2));
+    const a = document.createElement('a');
+    a.setAttribute("href", dataStr);
+    a.setAttribute("download", "added_nodes.geojson");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  </script>
+
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTUO3uE5ySdbJUCmcbymI5RBfW-cRZCng&callback=initMap&libraries=geometry">
+  </script>
+</body>
+</html>
